@@ -159,7 +159,7 @@
     </div>
   </section>
 
-  <!-- CAIXINHA CASA -->
+  <!-- CAIXA UI -->
   <section id="aba-casa" class="card" style="display:none">
     <h3>Caixinha Casa — Acumulado</h3>
     <div style="display:flex;gap:16px;align-items:center">
@@ -174,7 +174,7 @@
     </div>
   </section>
 
-  <!-- COFRE JOÃO -->
+  <!-- COFRE UI -->
   <section id="aba-cofre" class="card" style="display:none">
     <h3>Cofre João — Acumulado</h3>
     <div style="display:flex;gap:16px;align-items:center">
@@ -191,116 +191,156 @@
 
   <!-- HISTÓRICO -->
   <section id="aba-historico" class="card" style="display:none">
-    <h3>Histórico Mês</h3>
-    <div class="muted">Aqui você pode ver e navegar pelos meses anteriores.</div>
+    <h3>Histórico de Meses</h3>
+    <div id="historicoList"></div>
   </section>
+
 </main>
 
 <script>
-const STORAGE_MES_KEY = "mesesControle";
-const WEBAPP_URL = "https://script.google.com/macros/s/AKfycbxwGdIk-fpeNs39-kyUmmd6u5bL571_4Ei7qMuSjxdqDVly-Zg2DajBs2Mc15ZpP9X8/exec"; // substitua pelo URL do seu Web App
+const WEBAPP_URL = "https://script.google.com/macros/s/AKfycbw5XtOgraT3LvJ39d7LXMOEEglvpPoDuo7G_QwJ3aXJbzjKGl91EUulOBGF69ugsHo6/exec";
 
-let meses = JSON.parse(localStorage.getItem(STORAGE_MES_KEY)) || {};
-let mesAtual = new Date().toLocaleDateString("pt-BR",{month:"long",year:"numeric"});
+let meses = [];
+let mesAtual = null;
+let dadosMes = {};
+let itens = [];
 
-const mesSelecionadoEl = document.getElementById("mesSelecionado");
-const tabela = document.querySelector("#tabela tbody");
+function mostrarAba(aba){
+  document.querySelectorAll('section[id^="aba-"]').forEach(sec => sec.style.display="none");
+  document.getElementById("aba-"+aba).style.display="block";
+  document.querySelectorAll("nav.tabs button").forEach(btn => btn.classList.remove("active"));
+  document.getElementById("tab"+aba.charAt(0).toUpperCase()+aba.slice(1)).classList.add("active");
+}
 
-function atualizarMesesSelect(){
-  mesSelecionadoEl.innerHTML = "";
-  Object.keys(meses).forEach(m=>{
-    const opt = document.createElement("option");
-    opt.value = m; opt.textContent = m;
-    if(m===mesAtual) opt.selected=true;
-    mesSelecionadoEl.appendChild(opt);
-  });
+// FORMATAÇÃO REAL
+function formatarReal(valor){return Number(valor).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});}
+
+// SALVAR ENTRADAS
+function salvarEntradas(){
+  if(!mesAtual){alert("Selecione ou crie um mês!");return;}
+  dadosMes.salario = parseFloat(document.getElementById("salario").value)||0;
+  dadosMes.rendaExtra = parseFloat(document.getElementById("rendaExtra").value)||0;
+  atualizarTotais();
+  salvarWebApp();
 }
-function mostrarAba(id){
-  ["principal","viagem","historico","casa","cofre"].forEach(a=>{
-    document.getElementById("aba-"+a).style.display = a===id?"block":"none";
-    document.getElementById("tab"+(a==="principal"?"Principal":a.charAt(0).toUpperCase()+a.slice(1))).classList.toggle("active",a===id)
-  })
-}
-function salvarMeses(obj){
-  localStorage.setItem(STORAGE_MES_KEY,JSON.stringify(obj));
-  // envia para planilha
-  fetch(WEBAPP_URL,{
-    method:"POST",
-    headers:{"Content-Type":"application/json"},
-    body:JSON.stringify(obj)
-  }).then(r=>r.json()).then(res=>console.log("Enviado:",res)).catch(e=>console.error("Erro:",e));
-}
-function novoMes(){
-  if(meses[mesAtual]) meses[mesAtual]=JSON.parse(JSON.stringify(meses[mesAtual]));
-  else meses[mesAtual]={itens:[],salario:0,rendaExtra:0,enviadoCasa:0,enviadoCofre:0,bgsDoMes:0,saldoAtual:0};
-  atualizarMesesSelect(); salvarMeses(meses); renderTabela();
-}
+
+// ADICIONAR ITEM
 function adicionarItem(){
-  const desc = document.getElementById("descricao").value;
+  const descricao = document.getElementById("descricao").value;
   const valor = parseFloat(document.getElementById("valor").value)||0;
   const tipo = document.getElementById("tipo").value;
   const parcela = document.getElementById("parcela").value;
-  if(!meses[mesAtual]) novoMes();
-  meses[mesAtual].itens.push({descricao:desc,valor,parcela,tipo,pago:false});
-  salvarMeses(meses); renderTabela();
+  if(!descricao){alert("Informe a descrição do item!");return;}
+  itens.push({descricao,valor,tipo,parcela,pago:false});
+  document.getElementById("descricao").value="";
+  document.getElementById("valor").value="";
+  document.getElementById("parcela").value="";
+  renderTabela();
+  atualizarTotais();
 }
+
+// MARCAR COMO PAGO
+function togglePago(idx){itens[idx].pago=!itens[idx].pago;renderTabela();atualizarTotais();}
+
+// ENVIAR PARA CAIXINHAS
 function enviarParaCaixinhas(){
-  if(!meses[mesAtual]) novoMes();
-  meses[mesAtual].enviadoCasa=parseFloat(document.getElementById("valorCasa").value)||0;
-  meses[mesAtual].enviadoCofre=parseFloat(document.getElementById("valorCofre").value)||0;
-  salvarMeses(meses); renderTabela();
+  dadosMes.casa = parseFloat(document.getElementById("valorCasa").value)||0;
+  dadosMes.cofre = parseFloat(document.getElementById("valorCofre").value)||0;
+  document.getElementById("valorCasa").value="";
+  document.getElementById("valorCofre").value="";
+  atualizarTotais();
+  salvarWebApp();
 }
-function salvarEntradas(){
-  if(!meses[mesAtual]) novoMes();
-  meses[mesAtual].salario=parseFloat(document.getElementById("salario").value)||0;
-  meses[mesAtual].rendaExtra=parseFloat(document.getElementById("rendaExtra").value)||0;
-  salvarMeses(meses); renderTabela();
+
+// NOVO MÊS
+function novoMes(){
+  const nome = prompt("Nome do novo mês:");
+  if(!nome) return;
+  mesAtual = nome;
+  meses.push(nome);
+  mesSelecionado.options.add(new Option(nome,nome));
+  mesSelecionado.value = nome;
+  dadosMes = {salario:0,rendaExtra:0,casa:0,cofre:0,itens:[]};
+  itens = [];
+  renderTabela();
+  atualizarTotais();
 }
+
+// RENDER TABELA
 function renderTabela(){
-  tabela.innerHTML=""; const dados = meses[mesAtual]||{itens:[]};
-  dados.itens.forEach((i,idx)=>{
-    const tr=document.createElement("tr"); if(i.pago) tr.classList.add("pago");
-    tr.innerHTML=`<td>${i.descricao}</td><td>${i.valor.toFixed(2)}</td><td>${i.tipo}</td><td>${i.parcela}</td><td>${i.pago?"Sim":"Não"}</td>
-    <td><button onclick="togglePago(${idx})">Pago?</button></td>`;
-    tabela.appendChild(tr);
+  const tbody = document.querySelector("#tabela tbody");
+  tbody.innerHTML="";
+  itens.forEach((item,idx)=>{
+    const tr=document.createElement("tr");
+    if(item.pago) tr.classList.add("pago");
+    tr.innerHTML=`<td>${item.descricao}</td>
+    <td>${formatarReal(item.valor)}</td>
+    <td>${item.tipo}</td>
+    <td>${item.parcela||''}</td>
+    <td><input type="checkbox" onclick="togglePago(${idx})" ${item.pago?'checked':''}></td>
+    <td><button class="danger" onclick="itens.splice(${idx},1);renderTabela();atualizarTotais();">❌</button></td>`;
+    tbody.appendChild(tr);
   });
-  // atualizar totais
-  const salario=dados.salario||0,renda=dados.rendaExtra||0,enviadoCasa=dados.enviadoCasa||0,enviadoCofre=dados.enviadoCofre||0;
-  let totalItens=dados.itens.reduce((a,i)=>i.pago?a:a+i.valor,0);
-  let saldoInicial=salario+renda;
-  let saldoDepoisContas=saldoInicial-totalItens;
-  let saldoDepoisCaixas=saldoDepoisContas-enviadoCasa-enviadoCofre;
-  let bgsDoMes=Math.round(saldoDepoisCaixas*0.2*100)/100;
-  let valorLazer=Math.round((saldoDepoisCaixas-bgsDoMes)*100)/100;
-  meses[mesAtual].bgsDoMes=bgsDoMes; meses[mesAtual].saldoAtual=saldoDepoisCaixas;
-  document.getElementById("saldoTotalInicial").textContent="R$ "+saldoInicial.toFixed(2);
-  document.getElementById("saldoDepoisContas").textContent="R$ "+saldoDepoisContas.toFixed(2);
-  document.getElementById("enviadoCasa").textContent="R$ "+enviadoCasa.toFixed(2);
-  document.getElementById("enviadoCofre").textContent="R$ "+enviadoCofre.toFixed(2);
-  document.getElementById("saldoDepoisCaixas").textContent="R$ "+saldoDepoisCaixas.toFixed(2);
-  document.getElementById("valorBgsMes").textContent="R$ "+bgsDoMes.toFixed(2);
-  document.getElementById("valorLazer").textContent="R$ "+valorLazer.toFixed(2);
-  renderBgs(); renderCasa(); renderCofre();
 }
-function togglePago(idx){meses[mesAtual].itens[idx].pago=!meses[mesAtual].itens[idx].pago; salvarMeses(meses); renderTabela();}
-function renderBgs(){
-  const listEl=document.getElementById("bgsContribList"); listEl.innerHTML=""; let total=0;
-  Object.values(meses).forEach(m=>{total+=m.bgsDoMes||0; if(m.bgsDoMes) listEl.innerHTML+=`<div>${m.bgsDoMes.toFixed(2)}</div>`;});
-  document.getElementById("bgsTotal").textContent="R$ "+total.toFixed(2);
+
+// ATUALIZAR TOTAIS
+function atualizarTotais(){
+  const saldoTotal = (dadosMes.salario||0)+(dadosMes.rendaExtra||0);
+  const contasNaoPagas = itens.filter(i=>!i.pago).reduce((a,b)=>a+b.valor,0);
+  const enviadoCasa = dadosMes.casa||0;
+  const enviadoCofre = dadosMes.cofre||0;
+  const saldoDepoisCaixas = saldoTotal - contasNaoPagas - enviadoCasa - enviadoCofre;
+  const valorBgs = saldoDepoisCaixas*0.2;
+  const valorLazer = saldoDepoisCaixas-valorBgs;
+
+  document.getElementById("saldoTotalInicial").innerText=formatarReal(saldoTotal);
+  document.getElementById("saldoDepoisContas").innerText=formatarReal(saldoTotal-contasNaoPagas);
+  document.getElementById("enviadoCasa").innerText=formatarReal(enviadoCasa);
+  document.getElementById("enviadoCofre").innerText=formatarReal(enviadoCofre);
+  document.getElementById("saldoDepoisCaixas").innerText=formatarReal(saldoDepoisCaixas);
+  document.getElementById("valorBgsMes").innerText=formatarReal(valorBgs);
+  document.getElementById("valorLazer").innerText=formatarReal(valorLazer);
+
+  // Atualiza abas de acumulo
+  document.getElementById("bgsTotal").innerText=formatarReal(valorBgs);
+  document.getElementById("casaTotal").innerText=formatarReal(enviadoCasa);
+  document.getElementById("cofreTotal").innerText=formatarReal(enviadoCofre);
+
+  document.getElementById("bgsContribList").innerHTML=formatarReal(valorBgs);
+  document.getElementById("casaContribList").innerHTML=formatarReal(enviadoCasa);
+  document.getElementById("cofreContribList").innerHTML=formatarReal(enviadoCofre);
 }
-function renderCasa(){
-  const listEl=document.getElementById("casaContribList"); listEl.innerHTML=""; let total=0;
-  Object.values(meses).forEach(m=>{total+=m.enviadoCasa||0; if(m.enviadoCasa) listEl.innerHTML+=`<div>${m.enviadoCasa.toFixed(2)}</div>`;});
-  document.getElementById("casaTotal").textContent="R$ "+total.toFixed(2);
+
+// SALVAR NO WEBAPP
+function salvarWebApp(){
+  if(!mesAtual) return;
+  const payload = {
+    mes: mesAtual,
+    salario: dadosMes.salario||0,
+    rendaExtra: dadosMes.rendaExtra||0,
+    casa: dadosMes.casa||0,
+    cofre: dadosMes.cofre||0,
+    itens: itens
+  };
+  fetch(WEBAPP_URL,{
+    method:"POST",
+    body: JSON.stringify(payload),
+    headers: {"Content-Type":"application/json"}
+  }).then(res=>res.json())
+    .then(resp=>{console.log("Dados salvos:",resp);})
+    .catch(err=>console.error("Erro ao salvar:",err));
 }
-function renderCofre(){
-  const listEl=document.getElementById("cofreContribList"); listEl.innerHTML=""; let total=0;
-  Object.values(meses).forEach(m=>{total+=m.enviadoCofre||0; if(m.enviadoCofre) listEl.innerHTML+=`<div>${m.enviadoCofre.toFixed(2)}</div>`;});
-  document.getElementById("cofreTotal").textContent="R$ "+total.toFixed(2);
+
+// EXPORTAR JSON
+function exportarDados(){ 
+  const exportObj = {mes:mesAtual, ...dadosMes, itens};
+  const blob = new Blob([JSON.stringify(exportObj,null,2)], {type:"application/json"});
+  const url = URL.createObjectURL(blob);
+  const a=document.createElement("a");a.href=url;a.download=`Mes_${mesAtual}.json`;a.click();
 }
-function exportarDados(){const dataStr="data:text/json;charset=utf-8,"+encodeURIComponent(JSON.stringify(meses)); const dl=document.createElement("a"); dl.setAttribute("href",dataStr); dl.setAttribute("download","meses.json"); dl.click();}
-mesSelecionadoEl.addEventListener("change",e=>{mesAtual=e.target.value; renderTabela();});
-atualizarMesesSelect(); renderTabela();
+
+// SELECT MES
+const mesSelecionado = document.getElementById("mesSelecionado");
 </script>
 </body>
 </html>
